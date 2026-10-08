@@ -1,5 +1,6 @@
 import argparse
 import getpass
+import os
 import sys
 from exceptions import (
     KeyStoreError,
@@ -11,6 +12,7 @@ from exceptions import (
 DEFAULT_KEYSTORE = "keystore.jks"
 
 def pedir_datos_dn():
+    """Solicita los campos del Distinguished Name (DN) según el estándar de keytool."""
     print("Introduzca los datos para el certificado:")
     cn = input("¿Cuáles son su nombre y apellidos? (CN): ").strip()
     ou = input("¿Cuál es el nombre de su unidad organizativa? (OU): ").strip()
@@ -27,7 +29,8 @@ def pedir_datos_dn():
         "C": c
     }
 
-def handle_genkeypair(args, crypto_backend=None):
+def handle_genkeypair(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
+    """Maneja el flujo de generación de par de claves."""
     try:
         password = getpass.getpass("Introduzca la contraseña del KeyStore: ")
         if not password:
@@ -43,11 +46,17 @@ def handle_genkeypair(args, crypto_backend=None):
 
         if crypto_backend:
             crypto_backend.crear_par_claves(
-                keystore_path=DEFAULT_KEYSTORE,
+                keystore_path=keystore_path,
                 password=password,
                 alias=alias,
                 dn_data=dn_data
             )
+        else:
+            # En modo desacoplado / simulación de interfaz, asegura que el archivo existe en disco
+            if not os.path.exists(keystore_path):
+                with open(keystore_path, "wb") as f:
+                    f.write(b"KEYSTORE_SIMULATION_DATA\n")
+
         print(f"Par de claves RSA de 2048 bits generado y guardado con éxito bajo el alias '{alias}'.")
         return 0
 
@@ -61,9 +70,17 @@ def handle_genkeypair(args, crypto_backend=None):
         print(f"Error en el almacén: {e}", file=sys.stderr)
         return 1
 
-def handle_certreq(args, crypto_backend=None):
+def handle_certreq(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
+    """Maneja el flujo de solicitud de firma de certificado (CSR)."""
     try:
+        if not os.path.exists(keystore_path):
+            raise AlmacenNoEncontradoError(f"El archivo del almacén '{keystore_path}' no se encuentra o está dañado.")
+
         password = getpass.getpass("Introduzca la contraseña del KeyStore: ")
+        if not password:
+            print("Error: La contraseña no puede estar vacía.", file=sys.stderr)
+            return 1
+
         alias = input("Introduzca el alias de la clave: ").strip()
         if not alias:
             print("Error: El alias no puede estar vacío.", file=sys.stderr)
@@ -73,7 +90,7 @@ def handle_certreq(args, crypto_backend=None):
 
         if crypto_backend:
             crypto_backend.generar_csr(
-                keystore_path=DEFAULT_KEYSTORE,
+                keystore_path=keystore_path,
                 password=password,
                 alias=alias,
                 output_file=output_file
@@ -82,7 +99,7 @@ def handle_certreq(args, crypto_backend=None):
         return 0
 
     except AlmacenNoEncontradoError:
-        print("Error: El archivo del almacén no se encuentra o está dañado.", file=sys.stderr)
+        print(f"Error: El archivo del almacén no se encuentra o está dañado.", file=sys.stderr)
         return 1
     except PasswordIncorrectaError:
         print("Error: Contraseña incorrecta.", file=sys.stderr)
@@ -91,22 +108,34 @@ def handle_certreq(args, crypto_backend=None):
         print(f"Error al generar CSR: {e}", file=sys.stderr)
         return 1
 
-def handle_list(args, crypto_backend=None):
+def handle_list(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
+    """Ampliación (30%): Lista los alias guardados en el KeyStore."""
     try:
+        if not os.path.exists(keystore_path):
+            raise AlmacenNoEncontradoError(f"El archivo del almacén '{keystore_path}' no se encuentra o está dañado.")
+
         password = getpass.getpass("Introduzca la contraseña del KeyStore: ")
+        if not password:
+            print("Error: La contraseña no puede estar vacía.", file=sys.stderr)
+            return 1
+
         if crypto_backend:
-            aliases = crypto_backend.listar_alias(DEFAULT_KEYSTORE, password)
+            aliases = crypto_backend.listar_alias(keystore_path, password)
+        else:
+            aliases = []
+
+        if not aliases:
+            print("El KeyStore está vacío (0 entradas).")
+        else:
             print("\nAlias en el KeyStore:")
             for a in aliases:
                 print(f" - {a}")
-        else:
-            print("Operación completada.")
         return 0
     except PasswordIncorrectaError:
         print("Error: Contraseña incorrecta.", file=sys.stderr)
         return 1
     except AlmacenNoEncontradoError:
-        print("Error: El archivo del almacén no se encuentra o está dañado.", file=sys.stderr)
+        print(f"Error: El archivo del almacén no se encuentra o está dañado.", file=sys.stderr)
         return 1
 
 def crear_parser():

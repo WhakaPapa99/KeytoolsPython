@@ -121,9 +121,10 @@ class TestCLI(unittest.TestCase):
 
     # --- 4. Tests de Flujo y Errores en --certreq ---
 
+    @patch("os.path.exists", return_value=True)
     @patch("getpass.getpass", return_value="clave123")
     @patch("builtins.input", return_value="mi_alias")
-    def test_certreq_exito(self, mock_input, mock_getpass):
+    def test_certreq_exito(self, mock_input, mock_getpass, mock_exists):
         """Verifica generación de CSR exitosa."""
         mock_backend = MagicMock()
         with patch("sys.stdout", new=io.StringIO()) as fake_out:
@@ -133,18 +134,20 @@ class TestCLI(unittest.TestCase):
         mock_backend.generar_csr.assert_called_once()
         self.assertIn("Solicitud de firma de certificado (CSR) generada", fake_out.getvalue())
 
+    @patch("os.path.exists", return_value=True)
     @patch("getpass.getpass", return_value="clave123")
     @patch("builtins.input", return_value="")
-    def test_certreq_alias_vacio(self, mock_input, mock_getpass):
+    def test_certreq_alias_vacio(self, mock_input, mock_getpass, mock_exists):
         """Comprueba validación de alias vacío en certreq."""
         with patch("sys.stderr", new=io.StringIO()) as fake_err:
             exit_code = handle_certreq(None)
         self.assertEqual(exit_code, 1)
         self.assertIn("no puede estar vacío", fake_err.getvalue())
 
+    @patch("os.path.exists", return_value=True)
     @patch("getpass.getpass", return_value="clave_erronea")
     @patch("builtins.input", return_value="mi_alias")
-    def test_error_password_incorrecta_certreq(self, mock_input, mock_getpass):
+    def test_error_password_incorrecta_certreq(self, mock_input, mock_getpass, mock_exists):
         """Comprueba rechazo amigable de contraseña en certreq."""
         mock_backend = MagicMock()
         mock_backend.generar_csr.side_effect = PasswordIncorrectaError("Password incorrecta")
@@ -155,23 +158,20 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         self.assertIn("Contraseña incorrecta", fake_err.getvalue())
 
-    @patch("getpass.getpass", return_value="clave123")
-    @patch("builtins.input", return_value="mi_alias")
-    def test_error_almacen_no_encontrado_certreq(self, mock_input, mock_getpass):
-        """Comprueba informe amigable cuando el almacén no existe o está dañado."""
-        mock_backend = MagicMock()
-        mock_backend.generar_csr.side_effect = AlmacenNoEncontradoError("No existe archivo")
-
+    @patch("os.path.exists", return_value=False)
+    def test_error_almacen_no_encontrado_certreq(self, mock_exists):
+        """Comprueba informe amigable cuando el almacén no existe antes de certreq."""
         with patch("sys.stderr", new=io.StringIO()) as fake_err:
-            exit_code = handle_certreq(None, crypto_backend=mock_backend)
+            exit_code = handle_certreq(None)
 
         self.assertEqual(exit_code, 1)
         self.assertIn("no se encuentra o está dañado", fake_err.getvalue())
 
     # --- 5. Tests de Ampliación (--list) ---
 
+    @patch("os.path.exists", return_value=True)
     @patch("getpass.getpass", return_value="clave123")
-    def test_list_exito(self, mock_getpass):
+    def test_list_exito(self, mock_getpass, mock_exists):
         """Verifica que --list enumera los alias existentes."""
         mock_backend = MagicMock()
         mock_backend.listar_alias.return_value = ["servidor_web", "firma_digital"]
@@ -184,8 +184,22 @@ class TestCLI(unittest.TestCase):
         self.assertIn("servidor_web", output)
         self.assertIn("firma_digital", output)
 
+    @patch("os.path.exists", return_value=True)
+    @patch("getpass.getpass", return_value="clave123")
+    def test_list_vacio(self, mock_getpass, mock_exists):
+        """Verifica aviso cuando el almacén existe pero no tiene alias creados."""
+        mock_backend = MagicMock()
+        mock_backend.listar_alias.return_value = []
+
+        with patch("sys.stdout", new=io.StringIO()) as fake_out:
+            exit_code = handle_list(None, crypto_backend=mock_backend)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("El KeyStore está vacío (0 entradas)", fake_out.getvalue())
+
+    @patch("os.path.exists", return_value=True)
     @patch("getpass.getpass", return_value="clave_erronea")
-    def test_list_error_password(self, mock_getpass):
+    def test_list_error_password(self, mock_getpass, mock_exists):
         """Comprueba gestión de contraseña incorrecta en --list."""
         mock_backend = MagicMock()
         mock_backend.listar_alias.side_effect = PasswordIncorrectaError("Password mal")
@@ -196,14 +210,11 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         self.assertIn("Contraseña incorrecta", fake_err.getvalue())
 
-    @patch("getpass.getpass", return_value="clave123")
-    def test_list_error_almacen(self, mock_getpass):
-        """Comprueba gestión de almacén inexistente en --list."""
-        mock_backend = MagicMock()
-        mock_backend.listar_alias.side_effect = AlmacenNoEncontradoError("No existe")
-
+    @patch("os.path.exists", return_value=False)
+    def test_list_error_almacen_inexistente(self, mock_exists):
+        """Comprueba que no pide contraseña y avisa directamente si el almacén no existe."""
         with patch("sys.stderr", new=io.StringIO()) as fake_err:
-            exit_code = handle_list(None, crypto_backend=mock_backend)
+            exit_code = handle_list(None)
 
         self.assertEqual(exit_code, 1)
         self.assertIn("no se encuentra o está dañado", fake_err.getvalue())
