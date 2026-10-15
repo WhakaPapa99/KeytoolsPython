@@ -2,17 +2,19 @@ import argparse
 import getpass
 import os
 import sys
+
+import crypto_backend as default_crypto_backend
 from exceptions import (
-    KeyStoreError,
-    PasswordIncorrectaError,
     AliasDuplicadoError,
     AlmacenNoEncontradoError,
+    KeyStoreError,
+    PasswordIncorrectaError,
 )
 
 DEFAULT_KEYSTORE = "keystore.jks"
 
+
 def pedir_datos_dn():
-    """Solicita los campos del Distinguished Name (DN) según el estándar de keytool."""
     print("Introduzca los datos para el certificado:")
     cn = input("¿Cuáles son su nombre y apellidos? (CN): ").strip()
     ou = input("¿Cuál es el nombre de su unidad organizativa? (OU): ").strip()
@@ -29,6 +31,7 @@ def pedir_datos_dn():
         "C": c
     }
 
+
 def handle_genkeypair(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
     """Maneja el flujo de generación de par de claves."""
     try:
@@ -44,18 +47,13 @@ def handle_genkeypair(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE)
 
         dn_data = pedir_datos_dn()
 
-        if crypto_backend:
-            crypto_backend.crear_par_claves(
-                keystore_path=keystore_path,
-                password=password,
-                alias=alias,
-                dn_data=dn_data
-            )
-        else:
-            # En modo desacoplado / simulación de interfaz, asegura que el archivo existe en disco
-            if not os.path.exists(keystore_path):
-                with open(keystore_path, "wb") as f:
-                    f.write(b"KEYSTORE_SIMULATION_DATA\n")
+        backend = crypto_backend if crypto_backend is not None else default_crypto_backend
+        backend.crear_par_claves(
+            keystore_path=keystore_path,
+            password=password,
+            alias=alias,
+            dn_data=dn_data
+        )
 
         print(f"Par de claves RSA de 2048 bits generado y guardado con éxito bajo el alias '{alias}'.")
         return 0
@@ -69,6 +67,7 @@ def handle_genkeypair(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE)
     except KeyStoreError as e:
         print(f"Error en el almacén: {e}", file=sys.stderr)
         return 1
+
 
 def handle_certreq(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
     """Maneja el flujo de solicitud de firma de certificado (CSR)."""
@@ -88,18 +87,18 @@ def handle_certreq(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
 
         output_file = f"{alias}.csr"
 
-        if crypto_backend:
-            crypto_backend.generar_csr(
-                keystore_path=keystore_path,
-                password=password,
-                alias=alias,
-                output_file=output_file
-            )
+        backend = crypto_backend if crypto_backend is not None else default_crypto_backend
+        backend.generar_csr(
+            keystore_path=keystore_path,
+            password=password,
+            alias=alias,
+            output_file=output_file
+        )
         print(f"Solicitud de firma de certificado (CSR) generada en '{output_file}'.")
         return 0
 
     except AlmacenNoEncontradoError:
-        print(f"Error: El archivo del almacén no se encuentra o está dañado.", file=sys.stderr)
+        print("Error: El archivo del almacén no se encuentra o está dañado.", file=sys.stderr)
         return 1
     except PasswordIncorrectaError:
         print("Error: Contraseña incorrecta.", file=sys.stderr)
@@ -108,8 +107,9 @@ def handle_certreq(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
         print(f"Error al generar CSR: {e}", file=sys.stderr)
         return 1
 
+
 def handle_list(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
-    """Ampliación (30%): Lista los alias guardados en el KeyStore."""
+    """Ampliación: Lista los alias guardados en el KeyStore."""
     try:
         if not os.path.exists(keystore_path):
             raise AlmacenNoEncontradoError(f"El archivo del almacén '{keystore_path}' no se encuentra o está dañado.")
@@ -119,10 +119,8 @@ def handle_list(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
             print("Error: La contraseña no puede estar vacía.", file=sys.stderr)
             return 1
 
-        if crypto_backend:
-            aliases = crypto_backend.listar_alias(keystore_path, password)
-        else:
-            aliases = []
+        backend = crypto_backend if crypto_backend is not None else default_crypto_backend
+        aliases = backend.listar_alias(keystore_path, password)
 
         if not aliases:
             print("El KeyStore está vacío (0 entradas).")
@@ -135,14 +133,62 @@ def handle_list(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
         print("Error: Contraseña incorrecta.", file=sys.stderr)
         return 1
     except AlmacenNoEncontradoError:
-        print(f"Error: El archivo del almacén no se encuentra o está dañado.", file=sys.stderr)
+        print("Error: El archivo del almacén no se encuentra o está dañado.", file=sys.stderr)
         return 1
+
+
+def handle_exportcert(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
+    """Ampliación: Extrae el certificado X.509 en formato PEM."""
+    try:
+        if not os.path.exists(keystore_path):
+            raise AlmacenNoEncontradoError(f"El archivo del almacén '{keystore_path}' no se encuentra o está dañado.")
+
+        password = getpass.getpass("Introduzca la contraseña del KeyStore: ")
+        if not password:
+            print("Error: La contraseña no puede estar vacía.", file=sys.stderr)
+            return 1
+
+        alias = input("Introduzca el alias del certificado a exportar: ").strip()
+        if not alias:
+            print("Error: El alias no puede estar vacío.", file=sys.stderr)
+            return 1
+
+        output_file = f"{alias}.crt"
+
+        backend = crypto_backend if crypto_backend is not None else default_crypto_backend
+        backend.exportar_certificado(
+            keystore_path=keystore_path,
+            password=password,
+            alias=alias,
+            output_file=output_file
+        )
+        print(f"Certificado exportado con éxito en '{output_file}'.")
+        return 0
+
+    except AlmacenNoEncontradoError:
+        print("Error: El archivo del almacén no se encuentra o está dañado.", file=sys.stderr)
+        return 1
+    except PasswordIncorrectaError:
+        print("Error: Contraseña incorrecta.", file=sys.stderr)
+        return 1
+    except KeyStoreError as e:
+        print(f"Error al exportar certificado: {e}", file=sys.stderr)
+        return 1
+
 
 def crear_parser():
     parser = argparse.ArgumentParser(
         prog="mykeytool.py",
-        description="Simulador CLI de Java Keytool en Python."
+        description="Simulador CLI de Java Keytool en Python.",
+        add_help=False
     )
+
+    parser.add_argument(
+        "-h", "--help",
+        action="help",
+        help="Muestra esta ayuda y sale."
+    )
+
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
         "--genkeypair", "--genkey",
@@ -160,7 +206,13 @@ def crear_parser():
         action="store_true",
         help="(Ampliación) Muestra todos los alias contenidos en el KeyStore."
     )
+    group.add_argument(
+        "--exportcert",
+        action="store_true",
+        help="(Ampliación) Exporta el certificado X.509 en formato PEM."
+    )
     return parser
+
 
 def main():
     parser = crear_parser()
@@ -172,6 +224,9 @@ def main():
         sys.exit(handle_certreq(args))
     elif args.list:
         sys.exit(handle_list(args))
+    elif args.exportcert:
+        sys.exit(handle_exportcert(args))
+
 
 if __name__ == "__main__":
     main()

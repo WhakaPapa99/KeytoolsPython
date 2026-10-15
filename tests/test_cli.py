@@ -8,6 +8,7 @@ from mykeytool import (
     handle_genkeypair,
     handle_certreq,
     handle_list,
+    handle_exportcert,
 )
 from exceptions import (
     AliasDuplicadoError,
@@ -33,6 +34,7 @@ class TestCLI(unittest.TestCase):
         self.assertIn("--genkey", output)
         self.assertIn("--certreq", output)
         self.assertIn("--list", output)
+        self.assertIn("--exportcert", output)
 
     def test_parser_alias_genkey(self):
         """Verifica que --genkey funciona como alias de --genkeypair."""
@@ -43,14 +45,12 @@ class TestCLI(unittest.TestCase):
         args_full = parser.parse_args(["--genkeypair"])
         self.assertTrue(args_full.genkeypair)
 
-    def test_parser_certreq_y_list(self):
-        """Verifica el reconocimiento individual de --certreq y --list."""
+    def test_parser_comandos_mutuamente_excluyentes(self):
+        """Verifica el reconocimiento individual de --certreq, --list y --exportcert."""
         parser = crear_parser()
-        args_certreq = parser.parse_args(["--certreq"])
-        self.assertTrue(args_certreq.certreq)
-
-        args_list = parser.parse_args(["--list"])
-        self.assertTrue(args_list.list)
+        self.assertTrue(parser.parse_args(["--certreq"]).certreq)
+        self.assertTrue(parser.parse_args(["--list"]).list)
+        self.assertTrue(parser.parse_args(["--exportcert"]).exportcert)
 
     # --- 2. Tests de Flujo e Inputs de --genkeypair ---
 
@@ -78,7 +78,7 @@ class TestCLI(unittest.TestCase):
     def test_genkeypair_password_vacia(self, mock_getpass):
         """Comprueba validación cuando la contraseña está vacía."""
         with patch("sys.stderr", new=io.StringIO()) as fake_err:
-            exit_code = handle_genkeypair(None)
+            exit_code = handle_genkeypair(None, crypto_backend=MagicMock())
         self.assertEqual(exit_code, 1)
         self.assertIn("no puede estar vacía", fake_err.getvalue())
 
@@ -87,7 +87,7 @@ class TestCLI(unittest.TestCase):
     def test_genkeypair_alias_vacio(self, mock_input, mock_getpass):
         """Comprueba validación cuando el alias está vacío."""
         with patch("sys.stderr", new=io.StringIO()) as fake_err:
-            exit_code = handle_genkeypair(None)
+            exit_code = handle_genkeypair(None, crypto_backend=MagicMock())
         self.assertEqual(exit_code, 1)
         self.assertIn("no puede estar vacío", fake_err.getvalue())
 
@@ -140,7 +140,7 @@ class TestCLI(unittest.TestCase):
     def test_certreq_alias_vacio(self, mock_input, mock_getpass, mock_exists):
         """Comprueba validación de alias vacío en certreq."""
         with patch("sys.stderr", new=io.StringIO()) as fake_err:
-            exit_code = handle_certreq(None)
+            exit_code = handle_certreq(None, crypto_backend=MagicMock())
         self.assertEqual(exit_code, 1)
         self.assertIn("no puede estar vacío", fake_err.getvalue())
 
@@ -162,7 +162,7 @@ class TestCLI(unittest.TestCase):
     def test_error_almacen_no_encontrado_certreq(self, mock_exists):
         """Comprueba informe amigable cuando el almacén no existe antes de certreq."""
         with patch("sys.stderr", new=io.StringIO()) as fake_err:
-            exit_code = handle_certreq(None)
+            exit_code = handle_certreq(None, crypto_backend=MagicMock())
 
         self.assertEqual(exit_code, 1)
         self.assertIn("no se encuentra o está dañado", fake_err.getvalue())
@@ -214,7 +214,55 @@ class TestCLI(unittest.TestCase):
     def test_list_error_almacen_inexistente(self, mock_exists):
         """Comprueba que no pide contraseña y avisa directamente si el almacén no existe."""
         with patch("sys.stderr", new=io.StringIO()) as fake_err:
-            exit_code = handle_list(None)
+            exit_code = handle_list(None, crypto_backend=MagicMock())
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("no se encuentra o está dañado", fake_err.getvalue())
+
+    # --- 6. Tests de Ampliación (--exportcert) ---
+
+    @patch("os.path.exists", return_value=True)
+    @patch("getpass.getpass", return_value="clave123")
+    @patch("builtins.input", return_value="mi_alias")
+    def test_exportcert_exito(self, mock_input, mock_getpass, mock_exists):
+        """Verifica exportación exitosa de certificado X.509."""
+        mock_backend = MagicMock()
+        with patch("sys.stdout", new=io.StringIO()) as fake_out:
+            exit_code = handle_exportcert(None, crypto_backend=mock_backend)
+
+        self.assertEqual(exit_code, 0)
+        mock_backend.exportar_certificado.assert_called_once()
+        self.assertIn("Certificado exportado con éxito", fake_out.getvalue())
+
+    @patch("os.path.exists", return_value=True)
+    @patch("getpass.getpass", return_value="clave123")
+    @patch("builtins.input", return_value="")
+    def test_exportcert_alias_vacio(self, mock_input, mock_getpass, mock_exists):
+        """Comprueba validación de alias vacío en exportcert."""
+        with patch("sys.stderr", new=io.StringIO()) as fake_err:
+            exit_code = handle_exportcert(None, crypto_backend=MagicMock())
+        self.assertEqual(exit_code, 1)
+        self.assertIn("no puede estar vacío", fake_err.getvalue())
+
+    @patch("os.path.exists", return_value=True)
+    @patch("getpass.getpass", return_value="clave_erronea")
+    @patch("builtins.input", return_value="mi_alias")
+    def test_exportcert_error_password(self, mock_input, mock_getpass, mock_exists):
+        """Comprueba rechazo de contraseña incorrecta en exportcert."""
+        mock_backend = MagicMock()
+        mock_backend.exportar_certificado.side_effect = PasswordIncorrectaError("Password mal")
+
+        with patch("sys.stderr", new=io.StringIO()) as fake_err:
+            exit_code = handle_exportcert(None, crypto_backend=mock_backend)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("Contraseña incorrecta", fake_err.getvalue())
+
+    @patch("os.path.exists", return_value=False)
+    def test_exportcert_error_almacen_inexistente(self, mock_exists):
+        """Comprueba aviso si el almacén no existe al exportar certificado."""
+        with patch("sys.stderr", new=io.StringIO()) as fake_err:
+            exit_code = handle_exportcert(None, crypto_backend=MagicMock())
 
         self.assertEqual(exit_code, 1)
         self.assertIn("no se encuentra o está dañado", fake_err.getvalue())
