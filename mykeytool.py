@@ -32,8 +32,11 @@ def pedir_datos_dn():
     }
 
 
+def _alias_seguro(alias):
+    return alias not in {".", ".."} and not any(char in alias for char in ("/", "\\", ":", "\0"))
+
+
 def handle_genkeypair(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
-    """Maneja el flujo de generación de par de claves."""
     try:
         password = getpass.getpass("Introduzca la contraseña del KeyStore: ")
         if not password:
@@ -43,6 +46,9 @@ def handle_genkeypair(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE)
         alias = input("Introduzca el alias para la clave: ").strip()
         if not alias:
             print("Error: El alias no puede estar vacío.", file=sys.stderr)
+            return 1
+        if not _alias_seguro(alias):
+            print("Error: El alias no puede contener una ruta de archivo.", file=sys.stderr)
             return 1
 
         dn_data = pedir_datos_dn()
@@ -62,15 +68,17 @@ def handle_genkeypair(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE)
         print(f"Error: El alias '{alias}' ya existe en el KeyStore.", file=sys.stderr)
         return 1
     except PasswordIncorrectaError:
-        print("Error: Contraseña incorrecta.", file=sys.stderr)
+        print("Error: Contraseña incorrecta o almacén manipulado/corrupto.", file=sys.stderr)
         return 1
     except KeyStoreError as e:
         print(f"Error en el almacén: {e}", file=sys.stderr)
         return 1
+    except OSError as e:
+        print(f"Error al guardar el almacén: {e}", file=sys.stderr)
+        return 1
 
 
 def handle_certreq(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
-    """Maneja el flujo de solicitud de firma de certificado (CSR)."""
     try:
         if not os.path.exists(keystore_path):
             raise AlmacenNoEncontradoError(f"El archivo del almacén '{keystore_path}' no se encuentra o está dañado.")
@@ -83,6 +91,9 @@ def handle_certreq(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
         alias = input("Introduzca el alias de la clave: ").strip()
         if not alias:
             print("Error: El alias no puede estar vacío.", file=sys.stderr)
+            return 1
+        if not _alias_seguro(alias):
+            print("Error: El alias no puede contener una ruta de archivo.", file=sys.stderr)
             return 1
 
         output_file = f"{alias}.csr"
@@ -101,15 +112,17 @@ def handle_certreq(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
         print("Error: El archivo del almacén no se encuentra o está dañado.", file=sys.stderr)
         return 1
     except PasswordIncorrectaError:
-        print("Error: Contraseña incorrecta.", file=sys.stderr)
+        print("Error: Contraseña incorrecta o almacén manipulado/corrupto.", file=sys.stderr)
         return 1
     except KeyStoreError as e:
         print(f"Error al generar CSR: {e}", file=sys.stderr)
         return 1
+    except OSError as e:
+        print(f"Error al escribir la CSR: {e}", file=sys.stderr)
+        return 1
 
 
 def handle_list(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
-    """Ampliación: Lista los alias guardados en el KeyStore."""
     try:
         if not os.path.exists(keystore_path):
             raise AlmacenNoEncontradoError(f"El archivo del almacén '{keystore_path}' no se encuentra o está dañado.")
@@ -130,7 +143,7 @@ def handle_list(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
                 print(f" - {a}")
         return 0
     except PasswordIncorrectaError:
-        print("Error: Contraseña incorrecta.", file=sys.stderr)
+        print("Error: Contraseña incorrecta o almacén manipulado/corrupto.", file=sys.stderr)
         return 1
     except AlmacenNoEncontradoError:
         print("Error: El archivo del almacén no se encuentra o está dañado.", file=sys.stderr)
@@ -138,7 +151,6 @@ def handle_list(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
 
 
 def handle_exportcert(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE):
-    """Ampliación: Extrae el certificado X.509 en formato PEM."""
     try:
         if not os.path.exists(keystore_path):
             raise AlmacenNoEncontradoError(f"El archivo del almacén '{keystore_path}' no se encuentra o está dañado.")
@@ -151,6 +163,9 @@ def handle_exportcert(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE)
         alias = input("Introduzca el alias del certificado a exportar: ").strip()
         if not alias:
             print("Error: El alias no puede estar vacío.", file=sys.stderr)
+            return 1
+        if not _alias_seguro(alias):
+            print("Error: El alias no puede contener una ruta de archivo.", file=sys.stderr)
             return 1
 
         output_file = f"{alias}.crt"
@@ -169,10 +184,13 @@ def handle_exportcert(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE)
         print("Error: El archivo del almacén no se encuentra o está dañado.", file=sys.stderr)
         return 1
     except PasswordIncorrectaError:
-        print("Error: Contraseña incorrecta.", file=sys.stderr)
+        print("Error: Contraseña incorrecta o almacén manipulado/corrupto.", file=sys.stderr)
         return 1
     except KeyStoreError as e:
         print(f"Error al exportar certificado: {e}", file=sys.stderr)
+        return 1
+    except OSError as e:
+        print(f"Error al escribir el certificado: {e}", file=sys.stderr)
         return 1
 
 

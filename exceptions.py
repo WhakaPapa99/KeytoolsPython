@@ -1,4 +1,3 @@
-# exceptions.py
 
 class KeyStoreError(Exception):
     pass

@@ -143,15 +143,15 @@ Certificado exportado con éxito en 'mi_servidor.crt'.
 ## 🛡️ Gestión de Excepciones y Escenarios Anómalos (Apartado 3.2)
 
 El sistema captura y gestiona de forma amigable todas las anomalías sin lanzar *tracebacks*:
-* **Contraseña Incorrecta:** Si se introduce una contraseña errónea al abrir el KeyStore, el descifrado AES-256-GCM detecta la discrepancia en el tag de autenticación y emite:
+* **Contraseña incorrecta o almacén manipulado:** AES-256-GCM rechaza el contenido si la contraseña no coincide o si cambia el contenido autenticado. No permite distinguir ambos casos con certeza, por lo que el programa informa ambos:
   ```text
-  Error: Contraseña incorrecta.
+  Error: Contraseña incorrecta o almacén manipulado/corrupto.
   ```
 * **Alias Duplicado:** Si se intenta generar un par con un alias que ya existe dentro del KeyStore, se deniega la operación:
   ```text
   Error: El alias 'mi_servidor' ya existe en el KeyStore.
   ```
-* **Almacén Inexistente o Dañado:** Si no existe el archivo del almacén o ha sido manipulado, no solicita contraseñas inútilmente y avisa:
+* **Almacén inexistente o con formato inválido:** Si no existe el archivo o su cabecera/contenido descifrado tiene un formato inválido, no solicita contraseñas inútilmente y avisa:
   ```text
   Error: El archivo del almacén 'keystore.jks' no se encuentra o está dañado.
   ```
