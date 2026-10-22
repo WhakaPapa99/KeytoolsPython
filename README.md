@@ -76,6 +76,9 @@ options:
 
 ### 2. Generación de Par de Claves y Almacén (`--genkeypair` o `--genkey`)
 Genera un par de claves RSA de 2048 bits, construye el Distinguished Name (DN) X.500, genera un certificado autofirmado y almacena todo cifrado con AES-256-GCM en `keystore.jks`:
+
+Al crear un almacén nuevo, la contraseña debe tener al menos 6 caracteres. Al abrir un almacén existente se admite su contraseña actual.
+
 ```bash
 python mykeytool.py --genkeypair
 ```

@@ -12,6 +12,7 @@ from exceptions import (
 )
 
 DEFAULT_KEYSTORE = "keystore.jks"
+MIN_PASSWORD_LENGTH = 6
 
 
 def pedir_datos_dn():
@@ -41,6 +42,12 @@ def handle_genkeypair(args, crypto_backend=None, keystore_path=DEFAULT_KEYSTORE)
         password = getpass.getpass("Introduzca la contraseña del KeyStore: ")
         if not password:
             print("Error: La contraseña no puede estar vacía.", file=sys.stderr)
+            return 1
+        if not os.path.exists(keystore_path) and len(password) < MIN_PASSWORD_LENGTH:
+            print(
+                f"Error: La contraseña debe tener al menos {MIN_PASSWORD_LENGTH} caracteres.",
+                file=sys.stderr,
+            )
             return 1
 
         alias = input("Introduzca el alias para la clave: ").strip()
