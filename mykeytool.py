@@ -229,12 +229,12 @@ def crear_parser():
     group.add_argument(
         "--list",
         action="store_true",
-        help="(Ampliación) Muestra todos los alias contenidos en el KeyStore."
+        help="Muestra todos los alias contenidos en el KeyStore."
     )
     group.add_argument(
         "--exportcert",
         action="store_true",
-        help="(Ampliación) Exporta el certificado X.509 en formato PEM."
+        help="Exporta el certificado X.509 en formato PEM."
     )
     return parser
 
